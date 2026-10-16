@@ -1,0 +1,78 @@
+# Clearance overlay policy for Company A containers.
+# Effective access = native_permission(user, item)
+#                   AND clearance(user) >= label(container)
+#                   AND (no groups on container OR group_overlap(user, container groups))
+# The overlay only narrows. Native permission is always required.
+
+confluence:
+  PAY-DOCS:
+    label: confidential
+    groups: []
+  PAYGW:
+    label: confidential
+    groups: [eng]
+  SEC:
+    label: secret
+    groups: [security]
+  LEADS:
+    label: secret
+    groups: [leads]
+
+jira:
+  PAY:
+    label: confidential
+    groups: [eng]
+  DBM:
+    label: confidential
+    groups: [eng]
+  SEC:
+    label: secret
+    groups: [security]
+
+slack:
+  "#payments-incident":
+    label: confidential
+    groups: []
+  "#db-migration":
+    label: confidential
+    groups: []
+  "#db-migration-leads":
+    label: secret
+    groups: [leads]
+  "#auth-design":
+    label: confidential
+    groups: []
+  "#sre-oncall-private":
+    label: confidential
+    groups: [sre]
+  "#security-private":
+    label: top_secret
+    groups: [security]
+  "#vendor-integration":
+    label: open
+    groups: []
+  "DM-sam-raj":
+    label: secret
+    groups: [leads]
+
+drive:
+  /Postmortems:
+    label: confidential
+    groups: [eng]
+  /Security:
+    label: secret
+    groups: [security]
+  /Vendors:
+    label: open
+    groups: []
+  link-shared:
+    label: open
+    groups: []
+  /Leadership:
+    label: secret
+    groups: [leads]
+
+uploads:
+  default:
+    label: confidential
+    groups: []

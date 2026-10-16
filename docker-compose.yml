@@ -1,0 +1,15 @@
+services:
+  fileguard:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # pass your LLM credentials through from the host shell
+      - ANTHROPIC_AUTH_TOKEN
+      - ANTHROPIC_API_KEY
+      - ANTHROPIC_BASE_URL
+      - FILEGUARD_GATEKEEPER_MODE=live
+      - FILEGUARD_GATEKEEPER_MODEL=claude-sonnet-5-5
+    # uncomment to keep the audit log / TSA material across restarts:
+    # volumes:
+    #   - ./data:/app/data

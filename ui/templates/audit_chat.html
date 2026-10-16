@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_icons.html" import linkglyph %}
+{% block title %}FileGuard — Audit chat{% endblock %}
+{% block bodyclass %}class="audit"{% endblock %}
+{% block head %}<script src="/static/audit-chat.js" defer></script>{% endblock %}
+
+{% block body %}
+<div class="audit-app closed">
+  <aside class="side">
+    <div class="brand">{{ linkglyph(color='#55C7C2') }}FileGuard</div>
+    <nav aria-label="Audit views">
+      <a href="/audit?view=log">Central log</a>
+      <a href="/audit?view=violations">Violations</a>
+      <a href="/audit?view=sources">Sources</a>
+      <a href="/audit/chat" aria-current="page">Audit chat</a>
+    </nav>
+    <div class="who">
+      <b>{{ 'Top-secret auditor' if level == 'top_secret' else 'Standard auditor' }}</b>
+      {{ 'All entries, traces and raw input are shown unredacted.' if level == 'top_secret'
+         else 'Routine entries in full; violations reduced; higher-tier accesses hidden.' }}</div>
+    <form method="post" action="/audit/chat/clear">
+      <button class="btn full" type="submit">New conversation</button>
+    </form>
+    <button class="btn full" type="button" hx-post="/audit/logout">Sign out</button>
+  </aside>
+
+  <div id="amain" class="achat-main">
+    <div class="audit-header">
+      <div>
+        <h1>Audit chat</h1>
+        <p class="meta">Use natural language to ask about the audit log. AI may
+           make mistakes — always cross-verify against actual logs.</p>
+      </div>
+    </div>
+
+    <div class="achat-log" id="achatlog">
+      {% if not has_messages %}
+        <div class="aempty" id="aempty">
+          <h2>Audit assistant</h2>
+          <p>Ask in plain language — e.g. "everything jdoe accessed in PAYGW
+             in the last 30 days". Answers cite entries by event number (seq).</p>
+        </div>
+      {% endif %}
+      {% for m in messages_html %}{{ m | safe }}{% endfor %}
+    </div>
+
+    <div class="achat-dock">
+      <div class="achat-starters">
+        <button type="button" data-message="Show me everything user jdoe accessed in the PAYGW confluence space in the last 30 days">jdoe in PAYGW, last 30 days</button>
+        <button type="button" data-message="Show me all denied requests in the last 7 days">All denials, last 7 days</button>
+        <button type="button" data-message="Show me all policy mismatch warnings">Policy mismatch warnings</button>
+      </div>
+      <div class="achat-composer">
+        <textarea id="amessage" rows="1" aria-label="Ask about the audit trail"
+                  placeholder="Ask about the audit trail"></textarea>
+        <button id="asend" type="button" aria-label="Send">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

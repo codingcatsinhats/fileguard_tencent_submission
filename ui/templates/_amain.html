@@ -1,0 +1,168 @@
+{% from "_icons.html" import check %}
+<div class="amain">
+  <div class="top">
+    <div>
+      <h1>{{ {'log': 'Central log', 'violations': 'Violations', 'sources': 'Sources'}[view] }}</h1>
+      <div class="status">{{ check(16) }}
+        <span>
+          {% if view == 'sources' %}
+            {{ sources.total_items }} indexed items · {{ sources.total_units }} units
+            across {{ sources.rows | length }} connectors
+          {% elif view == 'violations' %}
+            Rejections and abuse blocks
+            {{ 'unredacted at your tier' if level == 'top_secret' else 'reduced to who, what and when' }}
+          {% elif cp.last_seq %}
+            Chain verified through entry {{ cp.last_seq }} · checkpoint
+            #{{ cp.seq }} signed {{ cp_time }} SGT · {{ awaiting_label }}
+          {% else %}
+            {{ entries | length }} entries · no checkpoint signed yet
+          {% endif %}
+        </span>
+      </div>
+    </div>
+    <div class="atools">
+      <div class="row">
+        {% if view == 'sources' %}
+        <button class="btn pri" id="syncnow" type="button"
+                hx-post="/audit/sync" hx-target="#amain" hx-swap="innerHTML"
+                title="Pull every connector into the unified index now">Sync now</button>
+        {% else %}
+        <a class="btn" href="/audit/export?fmt=csv&{% for k, v in filters.items() %}{% if v %}{{ k }}={{ v }}&{% endif %}{% endfor %}">Export CSV</a>
+        <a class="btn" href="/audit/export?fmt=json&{% for k, v in filters.items() %}{% if v %}{{ k }}={{ v }}&{% endif %}{% endfor %}">Export JSON</a>
+        {% endif %}
+        <button class="btn" id="refresh" type="button"
+                hx-get="/audit/panel?view={{ view }}" hx-target="#amain"
+                hx-swap="innerHTML">Refresh log</button>
+        {% if level == 'top_secret' %}
+        <button class="btn pri" id="sign" type="button"
+                hx-post="/audit/checkpoint" hx-target="#amain" hx-swap="innerHTML"
+                title="Sign and anchor the audit chain as it stands">Sign checkpoint</button>
+        {% endif %}
+      </div>
+      {% if stamp %}<span class="stamp" aria-live="polite">{{ stamp }}</span>{% endif %}
+    </div>
+  </div>
+
+  {% if view == 'sources' %}
+    <div class="chips" style="visibility:hidden"></div>
+    <table>
+      <thead><tr>
+        <th>Connector</th><th>Items</th><th>Synced</th><th>Deleted</th>
+        <th>Last sync</th><th>Lag</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        {% for r in sources.rows %}
+        <tr>
+          <td><b>{{ r.platform }}</b>
+            {% if r.platform == 'uploads' %}
+            <a class="m" href="/upload" style="margin-left:8px">upload page →</a>
+            {% endif %}</td>
+          <td class="m">{{ r.items }}</td>
+          <td class="m">{{ r.total_synced }}</td>
+          <td class="m">{{ r.total_deleted }}</td>
+          <td class="m">{{ r.last_sync_ts | sgt if r.last_sync_ts else '—' }}</td>
+          <td class="m">{% if r.lag_s is not none %}{{ (r.lag_s / 60) | round(1) }} min{% else %}—{% endif %}</td>
+          <td>
+            {% if r.last_error %}
+              <span class="badge b-secret" title="{{ r.last_error_ts | sgt }}">error</span>
+              <span class="muted small">{{ r.last_error | truncate(80) }}</span>
+            {% elif r.last_sync_ts %}<span class="badge">ok</span>
+            {% else %}<span class="badge">never synced</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    {% if level == 'top_secret' and view == 'log' %}
+    <div class="chips" id="chips">
+      <button data-f="all" aria-pressed="true">All entries</button>
+      <button data-f="secret" aria-pressed="false">Secret</button>
+      <button data-f="ts" aria-pressed="false">Top secret</button>
+    </div>
+    {% else %}
+    <div class="chips" style="visibility:hidden"></div>
+    {% endif %}
+
+    <form class="chips" method="get" action="/audit"
+          hx-get="/audit/panel" hx-target="#amain" hx-trigger="submit"
+          id="filters">
+      <input type="hidden" name="view" value="{{ view }}">
+      <input name="user" value="{{ filters.user }}" placeholder="employee"
+             aria-label="Employee" size="10">
+      <select name="platform" aria-label="Platform">
+        <option value="">All platforms</option>
+        {% for p in platforms %}<option value="{{ p }}" {{ 'selected' if filters.platform == p }}>{{ p }}</option>{% endfor %}
+      </select>
+      <input name="container" value="{{ filters.container }}" placeholder="container"
+             aria-label="Container" size="12">
+      <select name="event_type" aria-label="Event type">
+        <option value="">All events</option>
+        {% for t in event_types %}<option value="{{ t }}" {{ 'selected' if filters.event_type == t }}>{{ t }}</option>{% endfor %}
+      </select>
+      <select id="tier-filter" aria-label="Tier" title="Filter displayed entries by clearance tier (frontend view filter)">
+        <option value="">All tiers</option>
+        <option value="confidential">confidential</option>
+        <option value="secret">secret</option>
+        <option value="top_secret">top secret</option>
+      </select>
+      <input type="date" name="date_from" value="{{ filters.date_from }}" aria-label="From date">
+      <input type="date" name="date_to" value="{{ filters.date_to }}" aria-label="To date">
+      <button class="btn" type="submit">Filter</button>
+      {% if filters.platform or filters.container or filters.event_type or filters.date_from or filters.date_to %}
+      <a class="btn" href="/audit?view={{ view }}">Clear</a>
+      {% endif %}
+    </form>
+
+    <table>
+      <thead><tr>
+        <th></th><th>#</th><th>Time (SGT)</th><th>Event</th><th>Employee</th>
+        <th>Session</th><th>File / detail</th><th>Platform</th><th>Container</th><th>Tier</th>
+      </tr></thead>
+      <tbody id="tbody">
+        {% set ns = namespace(signed_through=0, just_n=0) %}
+        {% if cp.last_seq %}{% set ns.signed_through = cp.last_seq %}{% endif %}
+        {% if just_from %}{% for e in entries if e.seq > just_from %}{% set ns.just_n = ns.just_n + 1 %}{% endfor %}{% endif %}
+        {% set ns.just_i = ns.just_n %}
+        {% for e in entries %}{# newest first (audit_query sorts ts DESC) #}
+          {% set seam_here = cp.last_seq and e.seq == cp.last_seq and view == 'log' %}
+          {% if seam_here %}
+          <tr class="seam"><td class="railc"><i></i></td>
+            <td colspan="9"><b>Checkpoint #{{ cp.seq }}</b>
+              · signed {{ cp_time }} SGT · covers through seq {{ cp.last_seq }}</td></tr>
+          {% endif %}
+          {% set is_sel = sel == e.seq %}
+          {% set is_rel = not is_sel and sel_session and e.get('session_id') == sel_session %}
+          {% set is_just = just_from and e.seq > just_from and e.seq <= ns.signed_through and e.event != 'checkpoint' %}
+          {% if is_just %}{% set ns.just_i = ns.just_i - 1 %}{% endif %}
+          <tr class="{{ 'sel' if is_sel }} {{ 'rel' if is_rel }}
+                      {{ 'v' if e.event in ('rejection', 'abuse_block') }}
+                      {{ 'signed' if e.seq <= ns.signed_through }}
+                      {{ 'just' if is_just }}"
+              {% if is_just %}style="--i: {{ ns.just_i }}"{% endif %}
+              data-seq="{{ e.seq }}"
+              data-session="{{ e.get('session_id') or '' }}"
+              data-tier-row="{{ 'ts' if e.get('entry_clearance', 'open') == 'top_secret' else 'secret' if e.get('entry_clearance', 'open') == 'secret' else '' }}"
+              data-tier="{{ e.get('entry_clearance', 'open') }}"
+              tabindex="0">
+            <td class="railc"><i></i></td>
+            <td class="m">{{ e.seq }}</td>
+            <td class="m">{{ e.ts | sgt }}</td>
+            <td class="ev">{{ {'request': 'Request', 'response': 'Response', 'rejection': 'Rejection',
+                               'abuse_block': 'Abuse block', 'upload': 'Upload', 'error': 'Error',
+                               'checkpoint': 'Checkpoint'}.get(e.event, e.event) }}</td>
+            <td>{{ e.get('user_id', '—') }}</td>
+            <td class="m">{{ (e.get('session_id') or '—')[:8] if not e.redacted else 'withheld' }}</td>
+            <td>{{ e.get('item_title') or e.get('file_name') or e.get('item_id') or e.get('code') or e.get('note') or '—' }}</td>
+            <td class="m">{{ e.get('platform', '—') if not e.redacted else '—' }}</td>
+            <td class="m">{{ e.get('container', '—') if not e.redacted else '—' }}</td>
+            <td class="tier {{ 'ts' if e.get('entry_clearance', 'open') == 'top_secret' }}">
+              {{ e.get('entry_clearance', 'open').replace('_', ' ') }}</td>
+          </tr>
+        {% else %}
+        <tr><td colspan="10" class="m">No entries visible at your tier.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>

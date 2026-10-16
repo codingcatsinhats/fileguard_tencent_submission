@@ -1,0 +1,103 @@
+FILEGUARD — MINI DESCRIPTION
+============================
+
+1) PROJECT OVERVIEW — scenarios, users, value proposition
+---------------------------------------------------------
+FileGuard is a security gateway between an enterprise LLM assistant and a
+company's knowledge (Confluence, Jira, Slack, Drive, uploads). Users ask in
+plain language; FileGuard decides who may see what, how much, and records
+everything.
+
+Scenarios: any organization where an AI assistant touches sensitive internal
+knowledge — engineering (postmortems, on-call notes), finance/HR
+(board documents), security (vulnerability and breach reports), compliance.
+
+Users: employees (one chat across five platforms, every claim traceable to a
+verbatim source span via clickable chips); auditors (a tamper-evident log of
+every access, allow AND deny, queryable in plain language, tier-redacted);
+administrators (one-click approval before secret/top-secret content ships).
+
+Value: enterprise AI fails either locked-down-useless or useful-and-leaking.
+FileGuard makes the assistant useful AND provable — verbatim-only delivery,
+permissions re-checked live at query time, and a cryptographically
+tamper-evident audit trail covering even refused requests.
+
+2) REAL-WORLD SCENARIO INSIGHTS — pain points, audience, core problem
+---------------------------------------------------------------------
+- Permission drift: de-shared documents still served from stale indexes.
+  Fix: live platform permission check + permission epoch on every retrieval;
+  revocation effective at the next query.
+- Existence leakage: filtered assistants still leak via titles/snippets.
+  Fix: a forbidden document and a non-existent one produce byte-identical
+  responses — the unentitled user gets no trace at all.
+- Unverifiable answers: nobody can tell hallucination from source.
+  Fix: extractive-only delivery — a constrained LLM may only select spans,
+  never compose; every delivered span is verbatim and hash-pinned.
+- Need-to-know unenforced: RBAC says which documents, not how many.
+  Fix: reason-asserted retrieval with clearance ceilings, per-turn budgets,
+  and a deterministic abuse guard; over-clearance requests are rejected and
+  logged as violations.
+- The audit gap: platform logs show human file opens, not what an AI
+  retrieved, delivered, or refused. Fix: one append-only hash-chained log at
+  the gateway (with a second, harness-local log reconciled against it).
+
+Core problem: answer any question across the whole company's knowledge while
+making every byte delivered verified, permission-checked at query time, and
+audit-provable — including what was NOT allowed to be delivered.
+
+3) SOLUTION DESIGN — business + technical architecture, prompts
+---------------------------------------------------------------
+Business architecture: a policy-enforced mediation layer, not "give the AI
+an index of everything". Five connectors (one contract, native platform
+permission semantics preserved), a sync engine + reference-only unified
+index, a clearance/group policy overlay that can only narrow (disagreements
+audited as policy_mismatch), one audit gateway all actions flow through, and
+human-in-the-loop confirmation for secret/top-secret tiers.
+
+Technical path per question: search (references only, ACL-prefiltered;
+hidden_counts cover only items the user is already authorized to open,
+withheld by the agent's own lower ceiling) -> get_content (live access
+check -> freshness gate -> Gatekeeper span selection -> verbatim hash-pinned
+extraction -> confirmation gate -> grounding check -> signed receipt).
+Delivery is classified by shape: excerpt (one continuous passage), stitched
+(multiple passages in document order, "(...)" gaps), or no content. The
+audit trail is hash-chained with salted-hash commitments for restricted
+fields (purge-able plaintext side table), Ed25519 receipts and checkpoints
+anchored via RFC 3161; auditors query it in natural language via a read-only,
+tier-clamped audit chat.
+
+How prompts drive the AI: two LLM roles, each constrained by prompt AND
+mechanism. The Gatekeeper's prompt (index of spans + access reason, tool-only
+output of span references, desensitized selection reason, intra-document
+entity relations to select complete span sets) can only narrow — refs are
+validated and invalid ones dropped; failures fail closed. The assistant
+brain answers only from delivered spans with span-id citations; withheld
+content is not "promised hidden" — the model never receives it, so it cannot
+reveal it. The audit assistant's tier filter is validated and clamped
+server-side. Prompts shape the contribution; the architecture guarantees the
+bounds.
+
+4) BUSINESS VALUE — quantifiable impact
+---------------------------------------
+- Every claim re-verifiable: hallucinations strongly reduced by grounding in
+  verbatim, hash-pinned citations; whatever is delivered is fully visible in
+  clickable chips, so users and auditors cross-check against the delivered
+  text itself — verification never depends on trusting the model.
+- Revocation latency: effective at the next query (seconds), not the next
+  index rebuild (hours–days or never).
+- Existence leakage: zero metadata disclosure to the unentitled — no
+  snippets, names, or counts at all.
+- Audit coverage: 100% of AI accesses audited (including denials), tamper-
+  evident via Ed25519 checkpoints + RFC 3161 anchoring, double-recorded
+  (central + harness-local) with monthly reconciliation — tampering must
+  fool two independent records.
+- Compliance effort: audit questions drop from hours of cross-platform log
+  pulling to seconds (filterable console, CSV export, natural-language chat).
+- Insider risk: need-to-know enforced per retrieval (3 searches / 5
+  retrievals per message); broad-search, empty-flood and denied-flood
+  patterns blocked deterministically.
+- Retention risk: GDPR-style erasure of audit plaintext without breaking
+  chain verifiability (commitments stay in the chain).
+
+Don't trust us — verify us: receipts, checkpoints and the chain are
+independently checkable by anyone holding the tokens.

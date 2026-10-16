@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_icons.html" import linkglyph, eye, eye_off, check, shield %}
+{% block title %}FileGuard — Audit console{% endblock %}
+{% block bodyclass %}class="audit"{% endblock %}
+
+{% block body %}
+{% if not level %}
+<div class="si">
+  <section class="si-l">
+    <div class="brand">{{ linkglyph(color='#55C7C2') }}FileGuard</div>
+    <div>
+      <h1>Inspect the central audit trail.</h1>
+      <p>Entries inherit the highest clearance they describe. Standard auditors
+         see routine entries and reduced violations; top-secret auditors see
+         everything, including traces and raw input.</p>
+      <div class="pitch">
+        <div>{{ shield(18) }}<span>Hash-chained, append-only — tamper-evident by construction.</span></div>
+        <div>{{ shield(18) }}<span>Signed checkpoints anchor the chain against rewrites.</span></div>
+        <div>{{ shield(18) }}<span>Chat tokens never work here — audit tokens only.</span></div>
+      </div>
+    </div>
+  </section>
+  <section class="si-r">
+    <div class="card">
+      <h2>Auditor sign-in</h2>
+      <p class="note"><b>Demo sign-in.</b> Standard auditors see a reduced view;
+         top-secret auditors see everything unredacted.</p>
+      <div>
+        <label class="t2" for="token">Audit token</label>
+        <div class="field token-field">
+          <input id="token" type="text" name="token" autocomplete="off" spellcheck="false"
+                 placeholder="audit-token-standard" required>
+          <button class="ibtn token-toggle" type="button" aria-label="Hide token"
+                  aria-pressed="false"><span class="i-eye">{{ eye(18) }}</span><span class="i-eye-off">{{ eye_off(18) }}</span></button>
+        </div>
+      </div>
+      <p class="err" id="login-result" role="alert"></p>
+      <button class="btn pri full" type="button"
+              hx-post="/audit/login" hx-target="#login-result" hx-swap="innerHTML"
+              hx-include="#token">Sign in</button>
+      <p class="hint">Demo tokens: audit-priya (standard), audit-lena (top secret)
+         — or audit-token-standard / audit-token-topsecret.</p>
+    </div>
+  </section>
+</div>
+{% else %}
+<div class="audit-app" id="auditApp">
+  <aside class="side">
+    <div class="brand">{{ linkglyph(color='#55C7C2') }}FileGuard</div>
+    <nav aria-label="Audit views">
+      <a href="/audit?view=log" aria-current="{{ 'page' if view == 'log' else 'false' }}">
+        Central log <small>{{ counts.all }}</small></a>
+      <a href="/audit?view=violations" aria-current="{{ 'page' if view == 'violations' else 'false' }}">
+        Violations <small>{{ counts.viol }}</small></a>
+      <a href="/audit?view=sources" aria-current="{{ 'page' if view == 'sources' else 'false' }}">
+        Sources <small>{{ sources.total_items if sources else counts.all }}</small></a>
+      <a href="/audit/chat">Audit chat</a>
+    </nav>
+    <div class="who">Signed in as
+      <b>{{ 'Top-secret auditor' if level == 'top_secret' else 'Standard auditor' }}</b>
+      {{ 'All entries, traces and raw input are shown unredacted.' if level == 'top_secret'
+         else 'Routine entries in full; violations reduced; higher-tier accesses hidden.' }}</div>
+    <button class="btn full" type="button" hx-post="/audit/logout">Sign out</button>
+  </aside>
+
+  <div id="amain" style="min-width:0">
+    {% include "_amain.html" %}
+  </div>
+
+  <div class="dwrap" id="dwrap">
+    <div class="grip" id="grip" role="separator" aria-orientation="vertical"
+         aria-label="Resize details panel" aria-controls="dwrap" tabindex="0"></div>
+    <div class="dbar"><span>Entry details</span>
+      <button class="ibtn" id="dclose" type="button" aria-label="Close details panel">&#215;</button>
+    </div>
+    <aside class="detail" id="detail" aria-live="polite">
+      {% if sel_entry %}
+        {% include "_entry_detail.html" %}
+      {% else %}
+        <p class="meta">Select a log entry to see its full record.</p>
+      {% endif %}
+    </aside>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block head %}<script src="/static/audit.js" defer></script>{% endblock %}

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% from "_icons.html" import linkglyph, shield, eye, eye_off, upload %}
+{% block title %}FileGuard — Document assistant{% endblock %}
+
+{% block bodyclass %}data-held-index="{{ held_index }}"{% endblock %}
+{% block body %}
+{% if not session %}
+<div class="si">
+  <section class="si-l">
+    <div class="brand">{{ linkglyph() }}FileGuard</div>
+    <div>
+      <h1>Ask questions about company documents.</h1>
+      <p>Access is checked on every request and every request is logged.
+         The assistant only ever receives the excerpts you are cleared to read.</p>
+      <div class="pitch">
+        <div>{{ shield(18) }}<span>Answers come only from verbatim, access-checked excerpts.</span></div>
+        <div>{{ shield(18) }}<span>Top-secret access requires your one-click confirmation.</span></div>
+        <div>{{ shield(18) }}<span>Every request lands in a tamper-evident audit trail.</span></div>
+      </div>
+    </div>
+  </section>
+  <section class="si-r">
+    <div class="card">
+      <h2>Sign in</h2>
+      <p class="note"><b>Demo sign-in.</b> Your company's sign-in procedure replaces
+         this step in a real deployment.</p>
+      <div>
+        <label class="t2" for="token">Access token</label>
+        <div class="field token-field">
+          <input id="token" type="text" name="token" autocomplete="off" spellcheck="false"
+                 placeholder="token-maya" required>
+          <button class="ibtn token-toggle" type="button" aria-label="Hide token"
+                  aria-pressed="false"><span class="i-eye">{{ eye(18) }}</span><span class="i-eye-off">{{ eye_off(18) }}</span></button>
+        </div>
+      </div>
+      <p class="err" id="login-result" role="alert"></p>
+      <button class="btn pri full" type="button"
+              hx-post="/login" hx-target="#login-result" hx-swap="innerHTML"
+              hx-include="#token">Sign in</button>
+      <p class="hint">Demo tokens — Company A personas: token-maya, token-lena,
+         token-sam, token-raj, token-tom, token-jo, token-jdoe. Closed-network
+         corpus (upload-store demo): token-alice, token-bob, token-carol,
+         token-dave. Audit tokens only work in the audit console.</p>
+    </div>
+  </section>
+</div>
+{% else %}
+<div class="app">
+  <aside class="rail" aria-label="Your account">
+    <div class="brand">{{ linkglyph() }}FileGuard</div>
+    <section class="first">
+      <div class="user">
+        <div class="av" aria-hidden="true">{{ session.profile.name[0] }}</div>
+        <div><b>{{ session.profile.name }}</b><span>{{ session.profile.position }}</span></div>
+      </div>
+      <div class="groups">
+        {% for g in session.profile.groups %}<span>{{ g }}</span>
+        {% else %}<span>no groups</span>{% endfor %}
+      </div>
+      <div class="lvl"><b>{{ session.profile.max_clearance.replace('_', ' ') }}</b><span>clearance held</span></div>
+      {% set held = {'open': 0, 'confidential': 1, 'secret': 2, 'top_secret': 3}[session.profile.max_clearance] %}
+      <div class="meter" role="img" aria-label="Clearance: {{ session.profile.max_clearance.replace('_', ' ') }}">
+        {% for i in range(4) %}<i class="{{ 'on' if i <= held }}"></i>{% endfor %}
+      </div>
+    </section>
+    <section>
+      <label class="t" for="default-clearance">Default clearance for requests</label>
+      <select id="default-clearance">
+        {% for c in allowed_clearances %}<option value="{{ c }}"
+          {{ 'selected' if c == default_sel }}>{{ c.replace('_', ' ') }}</option>{% endfor %}
+      </select>
+      <p class="hint" id="defhint"></p>
+    </section>
+    <section>
+      <h2>Documents</h2>
+      <a class="btn full" href="/upload">{{ upload(16) }} Upload document</a>
+      <p class="hint">Uploads open on their own page, where you set confidentiality
+         and group.</p>
+    </section>
+    <section class="so"><button class="btn full" type="button" hx-post="/logout">Sign out</button></section>
+  </aside>
+
+  <main class="chat">
+    <header class="top">
+      <div><h1>Document assistant</h1>
+        <p>Ask about files you have access to. Every request is checked and logged.</p></div>
+    </header>
+    <div class="log" id="logwrap">
+      <div class="col" id="messages" role="log" aria-live="polite">
+        {% if not session.pending and not messages_html %}
+        <div class="empty" id="empty">
+          <h2>Welcome, {{ session.profile.name.split(' ')[0] }}</h2>
+          <p>Ask about the documents you are cleared to read. Answers are drawn from
+             exact excerpts, and every request is logged.</p>
+        </div>
+        {% endif %}
+        {{ messages_html | safe }}
+      </div>
+    </div>
+    <div class="dock"><div class="col">
+      <div class="starters" id="starters">
+        <button type="button" data-message="What was the root cause of the payment outage last quarter, and what follow-up tickets were created?">Root cause of the payment outage</button>
+        <button type="button" data-message="What's the status of the database migration project and were there any blockers raised in Slack last week?">Database migration status</button>
+        <button type="button" data-message="What is the HR policy?">Where is the parental leave policy?</button>
+        <button type="button" data-message="Summarise the Q3 financials">Summarise the Q3 financials</button>
+      </div>
+      <div class="composer" id="composer">
+        <a class="ibtn" href="/upload" aria-label="Upload a document">{{ upload(20) }}</a>
+        <textarea id="message" rows="1" aria-label="Message the assistant"
+                  placeholder="{{ 'Pending confirmation — approve or deny above' if session.pending else 'Ask about a document' }}"
+                  {% if session.pending %}disabled{% endif %}></textarea>
+        <button class="ibtn send" id="send" type="button" aria-label="Send"
+                {% if session.pending %}disabled{% endif %}>&#10148;</button>
+      </div>
+      <div class="cmp" id="cmpHint"></div>
+    </div></div>
+  </main>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<script src="/static/chat.js" defer></script>
+{% endblock %}

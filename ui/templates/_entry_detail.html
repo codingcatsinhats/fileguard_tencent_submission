@@ -1,0 +1,120 @@
+{% from "_icons.html" import check %}
+<div class="dh">
+  <h2>{{ {'request': 'Request', 'response': 'Response', 'rejection': 'Rejection',
+          'abuse_block': 'Abuse block', 'upload': 'Upload', 'error': 'Error',
+          'checkpoint': 'Checkpoint', 'purge_restricted': 'Restricted-field purge',
+          'policy_mismatch': 'Policy mismatch (overlay vs platform)',
+          'reconciliation_flag': 'Reconciliation flag'}.get(e.event, e.event) }}</h2>
+  {% if e.event in ('rejection', 'abuse_block') %}<span class="tag">Violation</span>{% endif %}
+</div>
+<p class="meta">{{ e.get('user_id', '—') }} · {{ e.ts | sgt }} SGT{% if e.get('session_id') and not e.redacted %} · session {{ e.session_id }}{% endif %}</p>
+
+{% if e.redacted %}
+  <section class="blk">
+    <h3>Reduced view</h3>
+    <div class="kv"><span>Employee</span><span>{{ e.get('user_id', '—') }}</span></div>
+    <div class="kv"><span>Violation type</span><span>{{ e.get('code', e.event) }}</span></div>
+    <div class="kv"><span>Time</span><span>{{ e.ts | sgt }}</span></div>
+    <p class="meta">Specifics withheld at your tier: {{ e.redacted_fields | join(', ') }}.</p>
+  </section>
+{% else %}
+
+<section class="blk">
+  <h3>Details</h3>
+  {% set rows = [
+    ('Tool', e.get('tool')),
+    ('File', e.get('file_name')),
+    ('Platform', e.get('platform') if e.get('platform') and e.get('platform') != '*' else None),
+    ('Container', e.get('container')),
+    ('Item', e.get('item_title') or e.get('item_id')),
+    ('Query', e.get('query')),
+    ('Delivery', {'stitched': 'stitched — composed from verified excerpts',
+                  'excerpts': 'excerpts — verbatim spans only',
+                  'none': 'nothing delivered'}.get(e.get('delivery'))),
+    ('Grounding (internal)', (e.get('grounding_level') or '') ~ (', ' ~ e.get('pruned_count') ~ ' pruned' if e.get('pruned_count') else '') if e.get('grounding_level') else None),
+    ('Requested clearance', e.get('desired_clearance')),
+    ('Entry tier', e.entry_clearance),
+    ('Abuse code', e.get('code')),
+    ('Warning', 'agent overstep' if e.get('warning') else None),
+    ('Gatekeeper', e.get('gatekeeper_reason')),
+    ('Result', (e.get('returned') | length ~ ' items') if e.get('returned') is iterable and e.get('returned') is not string and e.get('returned') else None),
+    ('Policy version', e.get('policy_version')),
+  ] %}
+  {% for k, v in rows %}{% if v %}<div class="kv"><span>{{ k }}</span><span>{{ v }}</span></div>{% endif %}{% endfor %}
+  {% if e.get('hidden_counts') %}<div class="kv"><span>Withheld</span>
+    <span>{% for label, n in e.get('hidden_counts').items() %}{{ n }} {{ label.replace('_', ' ') }}{{ '; ' if not loop.last }}{% endfor %}</span></div>{% endif %}
+  {% if e.get('full_doc') %}<div class="kv"><span>Full document</span><span>yes</span></div>{% endif %}
+</section>
+
+{% if e.get('reason') %}
+<section class="blk">
+  <h3>Access reason · {{ e.get('reason_label', 'agent-asserted') }}</h3>
+  <div class="box">{{ e.reason }}</div>
+</section>
+{% endif %}
+
+{% if level == 'top_secret' and e.get('raw_user_input') %}
+<section class="blk">
+  <h3>Raw input</h3>
+  <div class="box">&#8220;{{ e.raw_user_input }}&#8221;</div>
+</section>
+{% endif %}
+
+{% if level == 'top_secret' and e.get('search_terms') %}
+<section class="blk">
+  <h3>Search terms</h3>
+  <div class="box">&#8220;{{ e.search_terms }}&#8221;</div>
+</section>
+{% endif %}
+
+{# answer_text is a restricted field (D7): audit_query resolves the
+   commitment to plaintext for entitled viewers, "[purged]" after a purge,
+   and drops it entirely for viewers without access — so presence here
+   already implies entitlement. #}
+{% if e.get('answer_text') %}
+<section class="blk">
+  <h3>Delivered answer {% if e.answer_text == '[purged]' %}· purged{% endif %}</h3>
+  {% if e.answer_text == '[purged]' %}
+  <div class="box muted">[purged — commitment retained in the chain]</div>
+  {% else %}
+  <div class="box">&#8220;{{ e.answer_text }}&#8221;</div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if level == 'top_secret' and e.get('trace') %}
+<section class="blk">
+  <h3>Harness trace</h3>
+  {% for m in e.trace %}
+  <div class="step"><b>{{ loop.index }}</b>
+    <div>{{ m.get('role', 'message') }}
+      <small>{{ (m.get('content') or m.get('tool_call', {}) | tojson) | truncate(220) }}</small>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% endif %}
+
+<section class="blk">
+  <h3>Signature</h3>
+  {% if covered %}
+  <div class="okline">{{ check(16) }} Signed · checkpoint #{{ cp.seq }}</div>
+  <p class="meta">signed {{ cp_time }} SGT · {{ (cp.signature or '')[:26] }}…</p>
+  {% else %}
+  <div class="pendline">Unsigned</div>
+  <p class="meta">Covered by the next checkpoint</p>
+  {% endif %}
+</section>
+
+<section class="blk">
+  <h3>Integrity</h3>
+  <div class="okline">{{ check(16) }} Chain verified</div>
+  <p class="meta">entry {{ entry_hash[:16] }}… · previous {{ prev_hash[:16] }}…</p>
+</section>
+
+<section class="blk">
+  <h3>Payload</h3>
+  <pre class="payload">{{ e | tojson(indent=2) }}</pre>
+</section>

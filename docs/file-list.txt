@@ -1,0 +1,284 @@
+FILEGUARD — REPO INVENTORY & WORKING NOTES
+===========================================
+This is the de-facto surviving working document: repo inventory (file by
+file, below) plus everything that used to live in STATE.md / DECISIONS.md
+and is still relevant. Last updated 2026-10-16.
+
+=======================================================================
+IMPORTANT — STILL-RELEVANT NOTES (read this first)
+=======================================================================
+
+LEGACY CLUSTER — wired and load-bearing, do NOT delete casually
+----------------------------------------------------------------
+These pre-connectors remnants are still exercised by real functionality:
+- fileguard/file_index.py + the gateway `list_files` branch
+  (gateway.py:321) — powers the upload page's visible-files listing
+  (ui/web.py:526) and is an accepted gateway tool (rate-limited by
+  abuse_guard.py:242).
+- demo-seed/seed_story.py — generates the seeded audit history on every
+  reset-demo run (reset-demo.py:102). Deleting it empties the audit
+  console's demo data.
+- Old-cast (alice/bob/carol/dave) rows in scripts/seed.py — also the
+  live upload-store demo cast, not just legacy.
+- tests/test_section1.py, test_section2.py, test_demo_seed.py — cover the
+  above ("LEGACY" in their docstrings).
+
+Cleanup order when removing (from DECISIONS.md D1/D12; Phase 1 already
+done: scripts/client_demo.py and scripts/list_files_db.py removed):
+  1. LEGACY tests
+  2. list_files gateway route + file_index.py (needs an upload-page
+     replacement for the visible-files listing first)
+  3. seed_story.py + old-cast rows in scripts/seed.py (needs a reset-demo
+     audit-history replacement first)
+The stray `UI/` directory was intentionally kept (user instruction).
+
+PENDING / KNOWN LIMITATIONS (from STATE.md)
+----------------------------------------------------------------
+- G17 regression test (codebuddy 3c): tom asks the vendor-integration
+  spec question before and after `demo_story.py unshare-tom` — before,
+  DR-VENDOR-SPEC is cited; after, absent with the generic no-evidence
+  reply, byte-identical to a missing item. Needs live simulators
+  (end-to-end); the underlying no-existence-leak property is already
+  unit-covered in test_pipeline.
+- Per-module data-dir isolation in tests: test modules set
+  FILEGUARD_DATA_DIR at import/collection, so the LAST-imported module's
+  dir is shared by every module at runtime. Newer modules work around it
+  with _isolate fixtures; a proper fix means touching every legacy test
+  module. Post-deadline.
+- Batch get_content (post-deadline idea): one or two budgeted calls
+  covering a whole cross-source answer, keeping per-item checks.
+- hidden_counts aggregation is per-search, aggregated per turn.
+- Title-only items (no description/spans) can return no content from
+  get_content — by design, the pipeline ships nothing unverifiable.
+- Demo ops: restart uvicorn after reset-demo (in-process sessions);
+  uploads only become searchable after a sync (audit console → Sync now).
+- UNCOMMITTED working-tree change: all six dev_demo_files binaries differ
+  from HEAD (regenerated corpus — PDF IDs/trailers, xlsx/docx bytes).
+  Content appears equivalent; decide commit vs `git checkout --
+  dev_demo_files/`. data/ was built from what is on disk now.
+
+REMOVED 2026-10-16 (this cleanup)
+----------------------------------------------------------------
+- docs/DEMO-PATH.md, docs/DECISIONS.md, docs/STATE.md — internal notes;
+  still-relevant content absorbed into this file and DEMO-OUTLINE.md
+  (lena lower-ceiling beat, policy_mismatch bullet).
+- fileguard/runtime_llm.py + tests/test_runtime_llm.py — dead code (only
+  its own tests imported it; recoverable from git history if the BYO-key
+  work is revived).
+- ui/templates/_audit_rows.html, _profile_card.html, _registry.html —
+  zero references (chat-rail profile is inline in chat.html).
+- vreq.tsq, vtoken.tsr, .codebuddy/ — tool-output residue.
+- .submission-details/, .pytest_cache/ — untracked working folders.
+Earlier removals: scripts/client_demo.py, scripts/list_files_db.py.
+
+=======================================================================
+REPO INVENTORY — every file and what it does
+=======================================================================
+
+ROOT
+----
+README.md              Main doc: architecture overview, config, token table,
+                       demo flows, scripts index, test suite guide.
+requirements.txt       Python dependencies (FastAPI, uvicorn, anthropic, crypto, ...).
+.env.example           Environment template: data dir, purpose-separated keys,
+                       gatekeeper mode/model, demo clock. Never holds real secrets.
+.gitignore             Ignores runtime data (data/, __pycache__, .env, caches).
+.claude/settings.json  Claude Code session settings (plugins). Tooling, not product.
+
+fileguard/  (the gateway — the product)
+---------------------------------------
+__init__.py            Package; CLEARANCE_ORDER / CLEARANCE_NAME constants.
+config.py              Central config: data dir, keys, DB paths, gatekeeper mode/model.
+db.py                  Central SQLite: schema, append-only audit log with hash chain
+                       + UPDATE/DELETE-blocking triggers, side table, log helpers.
+security.py            Crypto core: AES-256-GCM content store, HMAC session grants,
+                       Ed25519 receipts/checkpoints, salted-hash commitments.
+models.py              Shared dataclasses: ItemRef, Item, Unit, ACLSnapshot, ScopeGrant.
+connector.py           Connector protocol/base: changes()/fetch()/fetch_acl() contract
+                       the five connectors implement.
+connectors/__init__.py Connector package exports.
+connectors/factory.py  build_connectors() — one connector per platform; identity
+                       bridge (chat user -> Company A employee); uploads reads DB directly.
+connectors/confluence.py  Confluence connector (simulator client, native ACL semantics).
+connectors/jira.py        Jira connector (projects/issues).
+connectors/slack.py       Slack connector (conversations/history).
+connectors/drive.py       Drive connector (files).
+connectors/uploads.py     Uploads connector: reads central DB + content store directly
+                          (no simulator); fetch() parses files into Units with
+                          base_clearance+groups ACL.
+sync_engine.py        Sync engine: connector -> unified index (index.db), sync_state
+                      cursors, reference-only (no content in the index).
+file_index.py         LEGACY (see top): list_files discovery — clearance+group
+                      filtering with hidden_counts; still wired (upload page,
+                      gateway route).
+search.py             search tool: ACL-prefiltered reference-only search over the
+                      unified index; uploads native-ACL enforcement; hidden_counts
+                      (only for natively-allowed items withheld by a lower ceiling);
+                      abuse-guard integration.
+auth_checker.py       Live can_access: per-platform permission re-check at query
+                      time (permission epoch aware).
+freshness.py          Freshness gate: index staleness + current_version comparison.
+pipeline.py           run_pipeline: get_content flow — access check -> freshness ->
+                      gatekeeper -> extraction -> confirmation gate -> grounding
+                      check -> signed receipt.
+gatekeeper.py         Gatekeeper LLM role: submit_spans tool-only output, ref
+                      validation (can only narrow), fail-closed.
+grounding.py          Grounding check + delivery-shape classification
+                      (excerpt / stitched / none); unverifiable content degrades
+                      to the verbatim spans.
+abuse_guard.py        Deterministic need-to-know guard: per-message budgets,
+                      broad-search / empty-flood / denied-flood patterns.
+span_extractor.py     Verbatim span extraction + hash pinning from selected units.
+session_service.py    Session lifecycle: ScopedGrant issue/verify, pending
+                      top-secret confirmations (nonce), message budgets.
+identity.py           Identity directory: chat users, personas, clearances, groups;
+                      container overlay policies (containers.yaml).
+audit_query.py        Auditor-facing query layer over the audit log (filters, CSV).
+audit_view.py         Audit console view helpers (rows, per-entry formatting).
+audit_restricted.py   Restricted-field commitments: salted hashes, plaintext side
+                      table, purge with chain verifiability intact.
+checkpoint.py         Signed audit checkpoints + RFC 3161 timestamp anchoring
+                      (TSA material in data/tsa/; temp artifacts at runtime only).
+store.py              Encrypted content store: save/load plaintext, content-addressed
+                      by SHA-256 (the file_id).
+parsers.py            File parsers: PDF/XLSX/DOCX -> typed spans; detect_kind().
+stub_models.py        Deterministic test/CI stubs for gatekeeper + answering model
+                      (no LLM API; used when GATEKEEPER_MODE=test).
+gateway.py            The gateway itself: tool dispatch (search / get_content /
+                      list_files), policy overlay application, audit emission,
+                      policy_mismatch warnings.
+
+harness/  (LLM orchestration)
+-----------------------------
+__init__.py           Package exports.
+agent_loop.py         The assistant brain loop: system prompt, tool calls into the
+                      gateway, span-id citations, budgets, API-key help text.
+audit_chat.py         Audit chat harness: redact-then-LLM, tier clamped
+                      server-side, read-only, seq citations.
+local_log.py          Harness-local hash-chained log of outgoing requests +
+                      verification; reconciled monthly against the central log.
+
+ui/  (web app)
+--------------
+web.py                FastAPI app: sign-in, chat, upload, confirmation, audit
+                      console (sources/entries/chat), sync endpoint, CSP.
+templates/base.html      Layout shell: fonts, nav, toasts.
+templates/chat.html      Sign-in screen + assistant chat (rail: profile, clearance
+                         meter, default clearance, upload link).
+templates/upload.html    Upload form: file, clearance select, groups, display name.
+templates/audit.html     Audit console shell (sources view + entries + chat).
+templates/_amain.html    Audit console main fragment (included by audit.html).
+templates/audit_chat.html  Audit-chat transcript partial.
+templates/badges.html    Clearance/platform badge macros.
+templates/_entry_detail.html  Audit entry detail partial (renders the covering
+                              checkpoint's number).
+templates/_icons.html    Inline SVG icon macros.
+static/style.css      All styling (design tokens, dark mode).
+static/ui.js          Shared UI glue (theme, toasts, toggles).
+static/chat.js        Chat page behavior (send, starters, composer).
+static/upload.js      Upload form behavior (drag-drop, groups).
+static/audit.js       Audit console behavior (filters, tabs).
+static/audit-chat.js  Audit chat behavior.
+static/htmx.min.js    Vendored htmx.
+static/fonts/         Self-hosted IBM Plex Sans/Mono woff2 + chain-fonts.css
+                      (the 2V0PKI*/Jqz55* files are Google-served unicode-range
+                      subsets referenced by chain-fonts.css — all used).
+
+simulators/  (fake enterprise platforms)
+----------------------------------------
+__init__.py           Package exports.
+common.py             Sim server shared plumbing (SQLite stores, bearer tokens).
+confluence.py         Confluence simulator (spaces, pages, can_view).
+jira.py               Jira simulator (projects, issues, roles).
+slack.py              Slack simulator (conversations, history, membership).
+drive.py              Drive simulator (files, sharing).
+evaluators.py         Pure per-platform permission evaluators, shared by the
+                      simulators and the connector adapters.
+
+demo-seed/  (demo data build + reset)
+-------------------------------------
+build_seed.py         Builds demo-seed/seed/: runs ingest_demo (corpus) + seed
+                      (users/tokens), produces central.db + encrypted store.
+reset-demo.py         Copies demo-seed/seed/ over the live data dir, generates
+                      the audit history (seed_story + Company A entries with
+                      timestamps relative to now), self-verifies both chains.
+seed_story.py         LEGACY (see top): old-cast audit story; still called by
+                      reset-demo.
+company_a/story.py    Company A narrative data (people, docs, events, story beats).
+company_a/containers.yaml  Clearance/group overlay policy per container.
+company_a/__init__.py, __init__.py  Package markers.
+seed/central.db       Prebuilt seed database (committed binary).
+seed/store/*.bin      Encrypted seed corpus blobs (committed binaries).
+README.md             demo-seed usage.
+
+dev_demo_files/  (plaintext originals — DEV/DEMO ONLY, outside the perimeter)
+------------------------------------------------------------------------------
+README.md             Warning banner: not part of the security perimeter;
+                      upload-store demo corpus + run instructions.
+board_compensation.xlsx  Plaintext original (upload-store corpus).
+employee_handbook.pdf    Plaintext original (upload-store corpus).
+hr_incident_report.docx  Plaintext original (upload-store corpus).
+hr_policy.pdf            Plaintext original (upload-store corpus).
+product_roadmap.docx     Plaintext original (upload-store corpus).
+q3_financials.xlsx       Plaintext original (upload-store corpus).
+decrypt.py            Demo tool: decrypt a store blob by name regex back to
+                      plaintext in this folder.
+                      NOTE: all six binaries currently differ from HEAD
+                      (see UNCOMMITTED note at top).
+
+scripts/  (operator + demo tooling)
+-----------------------------------
+seed.py               Seed users + audit tokens (both casts: Company A personas and
+                      alice/bob/carol/dave upload-store cast).
+ingest_demo.py        Generates the upload-store corpus docs, encrypts, registers
+                      (called by demo-seed/build_seed.py).
+sync_demo.py          Starts/restarts the 4 platform simulators + syncs the index.
+sim_server.py         Runs one platform simulator (reseeds from Company A).
+demo_story.py         Storyline events: runbook-v8, revoke-raj, restrict-vendor,
+                      unshare-tom, clock, reset.
+tamper_demo.py        Audit tamper demonstration (chain detects it).
+verify_receipt.py     Standalone delivery-receipt verification.
+reconcile.py          Monthly harness-local vs central log reconciliation.
+
+tests/  (353 tests, fully offline)
+----------------------------------
+test_section1.py      LEGACY — pre-connectors path (list_files branch, auth
+                      matrix, chains, nonces).
+test_section2.py      LEGACY — agent loop via list_files, confirmations, abuse
+                      guard, viewer gating, reconciliation.
+test_pipeline.py      get_content pipeline end-to-end.
+test_search.py        Search ACL prefilter, hidden_counts, uploads ACL.
+test_gatekeeper_units.py  Gatekeeper ref validation/narrowing.
+test_abuse_extensions.py  Abuse-guard budget/pattern rules.
+test_sync_engine.py   Sync engine + cursors + index.
+test_freshness.py     Freshness gate + stale handling.
+test_connector_contract.py  Connector contract conformance (all five).
+test_identity.py      Identity directory + bridging.
+test_demo_seed.py     Seed build integrity (old-cast story).
+test_company_a_seed.py  Company A persona/token completeness.
+test_simulators.py    Simulator behavior + evaluators.
+test_upload.py        Upload validation/classification/at-rest.
+test_web_ui.py        Web routes, sessions, confirmation flow, audit detail
+                      (incl. covering-checkpoint number regression test).
+test_audit_chat.py    Audit chat redaction + tier clamping.
+test_audit_upgrades.py  Restricted-field commitments, purge, checkpoints.
+test_restricted_wiring.py  Restricted-field wiring across views.
+
+docs/  (documentation)
+----------------------
+ARCHITECTURE.md       Trust-zone diagram, component inventory, trade-offs,
+                      simplified view.
+DEMO-OUTLINE.md       Demo walkthrough: setup, scenarios S1-S5, injection
+                      resistance, chain proof, optional extras (incl. the lena
+                      lower-ceiling / model-determined-clearance demo).
+DESCRIPTION.md        Full submission description (four sections).
+DESCRIPTION-MINI.txt  Condensed submission description.
+file-list.txt         This file — inventory + working notes.
+
+UNTRACKED (runtime, gitignored — not listed file-by-file)
+---------------------------------------------------------
+data/                 Live runtime state: central.db, index.db, harness_local.db,
+                      checkpoints.jsonl, content store blobs, tsa/. Wiped and
+                      regenerated by reset-demo (except tsa/ and checkpoints
+                      bookkeeping, which persist).
+__pycache__/, .venvs  Build/venv artifacts.

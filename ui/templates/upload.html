@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% from "_icons.html" import linkglyph, upload %}
+{% block title %}FileGuard — Upload documents{% endblock %}
+{% block bodyclass %}data-held-index="{{ held_index }}"{% endblock %}
+
+{% block body %}
+<div class="app">
+  <aside class="rail" aria-label="Your account">
+    <div class="brand">{{ linkglyph() }}FileGuard</div>
+    <section class="first">
+      <div class="user">
+        <div class="av" aria-hidden="true">{{ profile.name[0] }}</div>
+        <div><b>{{ profile.name }}</b><span>{{ profile.position }}</span></div>
+      </div>
+      <div class="groups">
+        {% for g in profile.groups %}<span>{{ g }}</span>
+        {% else %}<span>no groups</span>{% endfor %}
+      </div>
+      <div class="lvl"><b>{{ profile.max_clearance.replace('_', ' ') }}</b><span>clearance held</span></div>
+      <div class="meter" role="img" aria-label="Clearance: {{ profile.max_clearance.replace('_', ' ') }}">
+        {% for i in range(4) %}<i class="{{ 'on' if i <= held_index }}"></i>{% endfor %}
+      </div>
+    </section>
+    <section><a class="btn full" href="/">&#8592; Back to chat</a></section>
+    <section class="so"><button class="btn full" type="button" hx-post="/logout">Sign out</button></section>
+  </aside>
+
+  <main class="chat">
+    <header class="top">
+      <div><h1>Upload documents</h1>
+        <p>Files are encrypted on the server. You can only set a confidentiality
+           level and group that you hold.</p></div>
+    </header>
+    <div class="uplog">
+      <div class="uptabs" role="tablist" aria-label="Upload page sections">
+        <button class="uptab active" role="tab" aria-selected="true"
+                data-tab="upload" id="tab-upload-btn" type="button">Upload</button>
+        <button class="uptab" role="tab" aria-selected="false"
+                data-tab="files" id="tab-files-btn" type="button">Accessible Files</button>
+      </div>
+
+      <section class="uptab-panel active" data-panel="upload" id="upload-panel">
+        <div class="upwrap">
+          <div class="drop" id="drop">
+        {{ upload(26) }}
+        <div>Drag files here, or</div>
+        <button class="btn" id="choose" type="button">Choose files</button>
+        <small>PDF, DOCX or XLSX</small>
+        <input id="file" type="file" accept=".pdf,.docx,.xlsx" multiple hidden>
+      </div>
+      <p class="err" id="upMsg" role="alert" style="margin:0"></p>
+      <ul class="plist" id="pending" style="margin-top:0"></ul>
+      <div class="grid2">
+        <div>
+          <label class="t2" for="clearance">Desired confidentiality</label>
+          <select id="clearance">
+            {% for c in allowed_clearances %}<option value="{{ c }}"
+              {{ 'selected' if c == default_sel }}>{{ c.replace('_', ' ') }}</option>{% endfor %}
+          </select>
+          <p class="hint">Up to {{ profile.max_clearance.replace('_', ' ') }}, the most you hold.</p>
+        </div>
+        <div>
+          <span class="t2" id="uGrpLbl">Group</span>
+          <div class="chk" id="uGrp" role="group" aria-labelledby="uGrpLbl">
+            {% for g in profile.groups %}
+            <label><input type="checkbox" name="groups" value="{{ g }}"> {{ g }}</label>
+            {% else %}<span class="muted small">You are not in any group.</span>{% endfor %}
+          </div>
+          <p class="hint">Only groups you belong to are listed. Leave all unchecked
+             for no group restriction.</p>
+        </div>
+      </div>
+      <div id="upload-result"></div>
+      <div><button class="btn pri" id="upGo" type="button" disabled>Upload</button></div>
+        </div>
+      </section>
+
+      <section class="uptab-panel" data-panel="files" id="files-panel" hidden>
+        <div class="upfiles-bar">
+          <input class="upfiles-search" id="fileSearch" type="search"
+                 placeholder="Search by file name…"
+                 aria-label="Search files by name" autocomplete="off">
+          <span class="upfiles-count" id="fileCount">{{ visible_files | length }} files</span>
+        </div>
+        <ul class="plist" id="fileList">
+          {% for f in visible_files %}
+          <li data-name="{{ f.name }}" data-kind="{{ f.kind }}" data-groups="{{ f.groups | join(',') }}">
+            <span class="fmt">{{ f.kind | upper }}</span>
+            <span class="nm" title="{{ f.name }}">{{ f.name }}
+              <small>{{ f.base_clearance.replace('_', ' ') }}
+                {% if f.groups %} · {{ f.groups | join(', ') }}{% endif %}
+                {% if f.uploaded_by == profile.user_id %} · uploaded by you
+                {% elif f.uploaded_by %} · uploaded by {{ f.uploaded_by }}{% endif %}</small></span>
+            <span class="st ok">indexed</span>
+          </li>
+          {% else %}
+          <li class="none" id="noFiles">No documents visible to you yet</li>
+          {% endfor %}
+        </ul>
+        <p class="none upfiles-no-match" id="noMatch" style="display:none">No files match your search</p>
+      </section>
+    </div>
+  </main>
+</div>
+{% endblock %}
+
+{% block head %}<script src="/static/upload.js" defer></script>{% endblock %}

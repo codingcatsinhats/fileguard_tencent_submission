@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pydantic
+cryptography
+anthropic
+pymupdf
+openpyxl
+python-docx
+pytest
+httpx
+markdown
+nh3
+jinja2
+python-multipart
+pyyaml
