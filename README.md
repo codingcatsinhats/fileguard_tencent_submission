@@ -1,5 +1,10 @@
 # FileGuard — Internal Brain
 
+**Important note!**
+This is an archived version of FileGuard. Please refer to the main repo instead.
+Main repo: https://github.com/codingcatsinhats/fileGuard-brain.git
+The main repo contains some extra features such as: demo full agent breach (directly modify the system prompt of the user agent) to prove the model's access is limited; slightly improved ui displaying more detailed information
+
 Extractive, audited agentic access-control for **enterprise knowledge across
 platforms** (Confluence, Jira, Slack, Google Drive — all simulated), plus the
 original uploaded-documents store as a fifth source.
